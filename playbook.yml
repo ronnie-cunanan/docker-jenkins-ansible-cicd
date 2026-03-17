@@ -1,0 +1,48 @@
+---
+- name: Deploy Docker container from ECR
+  hosts: web
+  become: true
+
+  vars:
+    container_name: "my-running-app"
+    host_port: "8081"
+    container_port: "5001"
+
+  tasks:
+
+    - name: Ensure Docker is installed
+      apt:
+        name: docker.io
+        state: present
+        update_cache: yes
+
+    - name: Ensure Docker service is running
+      service:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Log in to AWS ECR
+      shell: |
+        aws ecr get-login-password --region {{ region }} \
+        | docker login --username AWS --password-stdin {{ docker_image.split('/')[0] }}
+      args:
+        executable: /bin/bash
+
+    - name: Pull latest Docker image
+      shell: docker pull {{ docker_image }}
+
+    - name: Stop existing container (if running)
+      block:
+        - name: Stop container
+          shell: docker stop {{ container_name }} || true
+          ignore_errors: true
+
+    - name: Remove existing container (if exists)
+      block:
+        - name: Remove container
+          shell: docker rm {{ container_name }} || true
+          ignore_errors: true
+
+    - name: Run new container
+      shell: docker run -d --name {{ container_name }} -p {{ host_port }}:{{ container_port }} {{ docker_image }}
